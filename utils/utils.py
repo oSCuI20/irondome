@@ -47,3 +47,14 @@ def halt_with_doc(msg, doc, program, code = 0):
 
 def load_module(path, module_name):
   return getattr(import_module(path), module)
+#load_module
+
+class ToObject:
+
+  def __init__(self, **kwargs):
+    for key, value in kwargs.items():
+      self.__setattr__(key, value)
+    #endfor
+
+  def __repr__(self):
+    return repr(self.__dict__)

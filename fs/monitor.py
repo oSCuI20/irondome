@@ -12,14 +12,20 @@ import traceback
 
 from ctypes import get_errno
 
-from lib.inotify import *
+from fs.inotify import *
+from utils.utils import ToObject
 
 
 class FSWatcher(object):
-  def __init__(self):
-    self.__fd = inotify_init()
+
+  def __init__(self, extensions=[]):
+    self.__fd   = inotify_init()
     self.__lock = threading.Lock()
-    self.__to_watcher = {}
+    self.__to_watcher  = {}
+    self.__extensions  = extensions
+
+    if not isinstance(self.__extensions, list):
+      raise FSWatcherError(-2, 'type of extensions not valid')
   #__init__
 
   def __del__(self):
@@ -30,49 +36,102 @@ class FSWatcher(object):
   #__del__
 
   def add_event(self, path, flags=IN_ALL_EVENTS, iflags=0):
-    iflags |= flags | IN_DELETE_SELF
+    iflags |= flags | IN_ALL_EVENTS
     path = path if isinstance(path, bytes) else path.encode()
     wd = inotify_add_watch(self.__fd, path, iflags)
 
     if wd == -1:
       errno = get_errno()
-      raise FSWatcherError(errno, strerror(errno))
+      print(FSWatcherError(errno, strerror(errno)))
+      return
 
     with self.__lock:
-      self.__to_watcher[wd] = {
+      self.__to_watcher[wd] = ToObject(**{
         'wd': wd,
         'path': path,
         'flags': flags
-      }
+      })
   #add_event
 
   def read_events(self):
-    """
-      return IEvent object
-    """
     try:
+      events, filepath = ([], None)
       data = os.read(self.__fd, 1024)
       for wd, mask, cookie, name in IEvent.parse(data):
         with self.__lock:
-          event  = self.__to_watcher.get(wd)
+          event = self.__to_watcher.get(wd)
 
-        if event is not None:
-          bit = 1
-          while bit < 0x10000:
-            if bit & mask and bit & event['flags']:
-              if isinstance(name, bytes):
-                name = name.decode()
+        if not event:
+          continue
 
-              yield IEvent(event, bit, name)
+        #TODO exclude or extensions to watcher
+        filepath = f'{event.path.decode()}'
+        if isinstance(name, bytes):
+          name = name.decode()
 
-            bit <<= 1
-          #endwhile
-        #endif
+        filepath += f'/{name}' if name else ''
+
+        bit = 1
+        while bit < 0x10000:
+          if mask & IN_DONT_FOLLOW || mask & IN_EXCL_UNLINK:
+            continue #exclude sym links
+
+          if mask & IN_ISDIR:
+            # remove or add new watchers
+            exists = self._watcher_exists(filepath)
+            if os.path.isdir(filepath) and not exists:
+              self.add_event(filepath, event.flags)
+
+            if exists and (mask & IN_DELETE) == IN_DELETE:
+              self._del_watcher_by_path(filepath)
+          #endif
+
+          if (mask & IN_MODIFY) == IN_MODIFY:
+            #TODO update hash
+            #TODO check entropy
+            pass
+          #endif
+
+          if bit & mask and bit & event.flags:
+            yield f'`{filepath}`: -> {IEvent(event, bit, filepath).action_name}'
+          #endif
+
+          bit <<= 1
+        #endwhile
       #endfor
 
     except OSError as e:
       raise FSWatcherError(*e.args)
   #read_event
+
+  def _checksum(self, filepath):
+    pass
+  #checksump
+
+  def _check_extension_file(self, filepath):
+    pass
+  #_exclude_file
+
+  def _watcher_exists(self, path):
+    path = path if isinstance(path, bytes) else path.encode()
+
+    for wd in self.__to_watcher.keys():
+      watcher = self.__to_watcher.get(wd)
+      if watcher.path == path:
+        return True
+    #endfor
+
+    return False
+  #_watcher_exists
+
+  def _del_watcher_by_path(self, path):
+    path = path if isinstance(path, bytes) else path.encode()
+    wds = list(self.__to_watcher.keys())
+    for wd in wds:
+      watcher = self.__to_watcher.get(wd)
+      if watcher.path == path:
+        del self.__to_watcher[wd]
+  #_del_watcher_by_path
 
   def _del_watchers(self):
     with self.__lock:
@@ -82,101 +141,7 @@ class FSWatcher(object):
 #class FSWatcher
 
 
-
-class IEvent(object):
-  __Access      = IN_ACCESS
-  __Modify      = IN_MODIFY
-  __Attrib      = IN_ATTRIB
-  __Create      = IN_CREATE
-  __Delete      = IN_DELETE
-  __DeleteSelf  = IN_DELETE_SELF
-  __MoveFrom    = IN_MOVED_FROM
-  __MoveTo      = IN_MOVED_TO
-  __Open        = IN_OPEN
-  __All         = IN_ALL_EVENTS
-
-  __action_names = {
-      __Access     : 'access',
-      __Modify     : 'modify',
-      __Attrib     : 'attrib',
-      __Create     : 'create',
-      __Delete     : 'delete',
-      __DeleteSelf : 'delete self',
-      __MoveFrom   : 'move from',
-      __MoveTo     : 'move to',
-      __Open       : 'open',
-  }
-
-  def __init__(self, event, action, name=''):
-    self.event  = event
-    self.action = action
-    self.name   = name
-
-  def __dict__(self):
-    out = {}
-    for k in ['event', 'action', 'name']:
-      out[k] = self.__getAttirbute__(k)
-
-    return repr(out)
-
-  def parse(b):
-    offset, by = (0, 16)
-
-    print(b)
-    while offset + by < len(b):
-      wd, mask, cookie, length = unpack_from('iIII', b, offset)
-      name = b[offset + by: offset + by + length].rstrip(b'\0')
-
-      offset += by + length
-      yield wd, mask, cookie, name
-  #parse
-
-  @property
-  def action_name(self):
-    print(self.action)
-    return self.__action_names.get(self.action)
-
-  @property
-  def path(self):
-    return self.event['path']
-
-  @property
-  def Access(self):
-    return self.__Access
-
-  @property
-  def Modify(self):
-    return self.__Modify
-
-  @property
-  def Attrib(self):
-    return self.__Attrib
-
-  @property
-  def Create(self):
-    return self.__Create
-
-  @property
-  def Delete(self):
-    return self.__Delete
-
-  @property
-  def DeleteSelf(self):
-    return self.__DeleteSelf
-
-  @property
-  def MoveFrom(self):
-    return self.__MoveFrom
-
-  @property
-  def MoveTo(self):
-    return self.__MoveTo
-
-  @property
-  def All(self):
-    return self.__All
-#class IEvents
-
-
 class FSWatcherError(OSError, Exception):
-  pass
+
+  def __str__(self):
+    return f'FSWatcherError - [Errno {self.errno}] {self.strerror}'

@@ -7,41 +7,113 @@
 # Detección de actividad anómala
 #
 """
-  {0} <path> <file-extension>
+  {0} [OPTIONS] <path> <file-extension>
+
+  OPTIONS:
+    -event values separate for comas, default all. Valid values:
+        'access'
+        'modify'
+        'attrib'
+        'create'
+        'delete'
+        'delete self'
+        'move from'
+        'move to'
+        'open'
+        'closed'
+        'closed'
+    -help
 """
 import sys, os
 
-from utils.utils           import *
+from time import time, sleep, strftime, localtime
+
+from fs.inotify   import IEvent
+from fs.monitor   import FSWatcher
+from utils.utils  import *
 
 
 class args:
   logfile  = '/var/log/irondome/irondome.logs'
-  filepath = None
-  filetype = None
+  basepath = os.path.dirname(os.path.abspath(sys.argv[0]))
 
-  maxmemory = 100 # MB
+  watchpath  = None
+  extensions = []
+  maxmemory  = 100 # MB
+
+  events = [
+    'access',
+    'modify',
+    'attrib',
+    'create',
+    'delete',
+    'delete self',
+    'move from',
+    'move to',
+    'open',
+    'closed',
+    'closed',
+  ]
 #class args
 
 
 def main():
   parse_arguments()
 
-  return
+  watchers = FSWatcher(args.extensions)
+  flags    = IEvent.get_flags(IEvent, args.events)
+
+  watchers.add_event(path=args.watchpath, flags=flags)
+
+  while True:
+    for event in watchers.read_events():
+      print(f'{strftime("%Y-%m-%d %H:%M:%S ", localtime())} -- {event}')
+
+    sleep(0.2)
+  #endwhile
 #main
 
-
 def parse_arguments():
-  if len(sys.argv) == 1:
-    halt_with_doc('', __doc__, sys.argv[0], 0)
+  options_ = [ '-event', '-help' ]
+  options  = ' '.join(sys.argv[1:]).strip().split(' ')
 
-  path  = sys.argv[1]
-  types = sys.argv[2:]
+  events = []
+  i = 0
+  while len(options)  > i:
+    data = options[i]
+    if data == '-events':
+      i += 1
+      events = options[i].split(',')
+    elif data == '-help':
+      halt_with_doc('', __doc__, sys.argv[0], 0)
 
-  if not os.path.exists(path):
+    else:
+      args.watchpath = os.path.abspath(options[i])
+      i += 1
+      if len(options) > i:
+        args.extensions = options[i:]
+        i += 1 + len(args.extensions)
+      #endif
+
+      continue
+
+    i += 1
+  #endwhile
+
+  print(args.__dict__)
+  if not args.watchpath:
+    halt('ERROR: set directory to monitoring')
+
+  if not os.path.exists(args.watchpath):
     halt('ERROR: path not found')
 
-  args.filepath = path
-  args.filetype = types
+  for event in events:
+    if event not in args.events:
+      halt(f'ERROR: {event} not recognized')
+  #endfor
+
+  if len(events) > 0:
+    args.events = events
 #parse_arguments
 
 
