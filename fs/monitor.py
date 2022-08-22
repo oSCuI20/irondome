@@ -10,103 +10,146 @@ import os
 import threading
 import traceback
 
-from ctypes import get_errno
+from time    import time
+from ctypes  import c_int, get_errno
+from fcntl   import ioctl
+from termios import FIONREAD
+from io      import FileIO
 
-from fs.inotify import *
-from utils.utils import ToObject
+from fs    import *
+from utils import ToObject, Logger
 
 
-class FSWatcher(object):
+class FSWatcher(FileIO):
 
   def __init__(self, extensions=[]):
-    self.__fd   = inotify_init()
+    FileIO.__init__(self, inotify_init(os.O_NONBLOCK))
+    #self.__fd   = inotify_init(os.O_NONBLOCK)
     self.__lock = threading.Lock()
-    self.__to_watcher  = {}
-    self.__extensions  = extensions
+    self.__to_watcher = {}
+    self.__extensions = extensions
+
+    self.__events_entry = []
+    self.__last_entry   = None
+    self.__timeout      = time()
 
     if not isinstance(self.__extensions, list):
       raise FSWatcherError(-2, 'type of extensions not valid')
+
+    self.logger = Logger()
+    self.logger.debug(f'__to_watcher -> {self.__to_watcher}')
   #__init__
 
-  def __del__(self):
-    if self.__fd is not None:
-      self._del_watchers()
-      os.close(self.__fd)
-      self.__fd = None
-  #__del__
+  # def __del__(self):
+  #   if self.__fd is not None:
+  #     self._del_watchers()
+  #     os.close(self.__fd)
+  #     self.__fd = None
+  # #__del__
 
-  def add_event(self, path, flags=IN_ALL_EVENTS, iflags=0):
+  def add_event(self, path, flags=IN_ALL_EVENTS, wd_parent=0, iflags=0):
     iflags |= flags | IN_ALL_EVENTS
     path = path if isinstance(path, bytes) else path.encode()
-    wd = inotify_add_watch(self.__fd, path, iflags)
+    wd = inotify_add_watch(self.fileno(), path, iflags)
+
+    self.logger.debug(f'new watcher -> wd {wd}, path {path} with parent {wd_parent}')
 
     if wd == -1:
       errno = get_errno()
-      print(FSWatcherError(errno, strerror(errno)))
-      return
+      raise FSWatcherError(errno, strerror(errno))
 
+    self.logger.debug(f'add_event __lock {self.__lock}')
     with self.__lock:
+      self.logger.debug(f'add_event with __lock {self.__lock}')
       self.__to_watcher[wd] = ToObject(**{
         'wd': wd,
         'path': path,
+        'wd_parent': wd_parent,
         'flags': flags
       })
   #add_event
 
-  def read_events(self):
-    try:
-      events, filepath = ([], None)
-      data = os.read(self.__fd, 1024)
-      for wd, mask, cookie, name in IEvent.parse(data):
+  def __handler(self, mask, path, flags, wd):
+    if mask & IN_ISDIR:  # remove or add new watchers
+      exists = self._watcher_exists(path)
+
+      if os.path.isdir(path) and not exists:
+        self.add_event(path, flags, wd)
+
+      if exists and mask & IN_DELETE:
         with self.__lock:
+          self._del_watcher_by_path(path)
+    #endif
+
+    if mask & IN_MODIFY:
+      #TODO manage integrity
+      pass
+    #endif
+  #__handler
+
+  def read_events(self, timeout=1):
+    try:
+      entry, data, avail = (None, b'', c_int())
+      ioctl(self, FIONREAD, avail)
+      if not avail.value:
+        if (time() - self.__timeout) > timeout:
+          if len(self.__events_entry) > 0:
+            yield self.__result()
+        #endif
+
+        return
+      #endif
+
+      self.__timeout = time()
+      data = os.read(self.fileno(), avail.value)
+
+      for wd, mask, cookie, name in FSEvent.parse(data):
+        self.logger.debug(f'read_events __lock {self.__lock}')
+        with self.__lock:
+          self.logger.debug(f'read_events with __lock {self.__lock}')
           event = self.__to_watcher.get(wd)
 
-        if not event:
+        if   not event or \
+             mask & IN_DONT_FOLLOW or \
+             mask & IN_EXCL_UNLINK:
+          continue #exclude sym links
+
+        #TODO extensions filter
+        entry  = f'{os.path.join(event.path, name).decode().rstrip("/")}'
+        self.logger.debug(f'read_events, mask {bin(mask)}')
+        self.logger.debug(f'read_events, entry {entry}')
+
+        self.__handler(mask, entry, event.flags, wd)
+        if mask & IN_ISDIR and event.wd_parent:
           continue
 
-        #TODO exclude or extensions to watcher
-        filepath = f'{event.path.decode()}'
-        if isinstance(name, bytes):
-          name = name.decode()
+        flag = mask & event.flags
+        if flag:
+          fsevent = FSEvent(event, flag, entry)
+          if  entry != self.__last_entry and \
+              self.__last_entry and len(self.__events_entry) > 0:
+            yield self.__result()
 
-        filepath += f'/{name}' if name else ''
-
-        bit = 1
-        while bit < 0x10000:
-          if mask & IN_DONT_FOLLOW || mask & IN_EXCL_UNLINK:
-            continue #exclude sym links
-
-          if mask & IN_ISDIR:
-            # remove or add new watchers
-            exists = self._watcher_exists(filepath)
-            if os.path.isdir(filepath) and not exists:
-              self.add_event(filepath, event.flags)
-
-            if exists and (mask & IN_DELETE) == IN_DELETE:
-              self._del_watcher_by_path(filepath)
-          #endif
-
-          if (mask & IN_MODIFY) == IN_MODIFY:
-            #TODO update hash
-            #TODO check entropy
-            pass
-          #endif
-
-          if bit & mask and bit & event.flags:
-            yield f'`{filepath}`: -> {IEvent(event, bit, filepath).action_name}'
-          #endif
-
-          bit <<= 1
-        #endwhile
+          self.__last_entry = entry
+          if fsevent.events_name not in self.__events_entry:
+            self.__events_entry.append(fsevent.events_name)
+        #endif
       #endfor
 
     except OSError as e:
       raise FSWatcherError(*e.args)
   #read_event
 
-  def _checksum(self, filepath):
-    pass
-  #checksump
+  def __result(self):
+    self.logger.debug(f'__last_entry {self.__last_entry}')
+    self.logger.debug(f'__events_entry {self.__events_entry}')
+
+    with self.__lock:
+      e = list(self.__events_entry)
+      self.__events_entry.clear()
+
+    return f'`{self.__last_entry}`: -> {" ".join(e)}'
+  #__result
 
   def _check_extension_file(self, filepath):
     pass

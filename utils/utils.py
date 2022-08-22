@@ -1,60 +1,51 @@
 # -*- coding: utf-8 -*-
 #
-# ./osi-model/data-link/__layer__.py
+# ./utils/utils.py
 # Eduardo Banderas Alba
 # 2022-08
 #
 # Aux functions
 #
-import sys, json
+import os, sys, json
+import hashlib
 
 from importlib        import import_module
 from importlib.util   import find_spec
 
-def logger(msg, out=sys.stdout):
-  if not msg:
-    return
-
-  try:
-    if isinstance(msg, dict) or isinstance(msg, list) or isinstance(msg, tuple):
-      msg = json.dumps(msg, indent=2)
-  except:
-    pass
-
-  out.write(msg + "\n")
-#logger
 
 def tohex(b):
   return f'{b:02x}'
 #tohex
 
 
-def halt(msg, code = 0):
-  try:
-    msg = json.dumps(json.loads(msg), indent=2)
-  except:
-    pass
-
-  sys.stdout.write(msg.strip() + '\n')
-  sys.exit(code)
-#_halt
-
-
-def halt_with_doc(msg, doc, program, code = 0):
-  halt('\n' + msg + '\n' + '-' * 80 + doc.format(program), code)
-#halt_with_doc
-
-
 def load_module(path, module_name):
   return getattr(import_module(path), module)
 #load_module
+
+
+def checksum(content, algo=hashlib.sha256):
+  return algo(content).hexdigest()
+#checksum
+
+
+def fp_write(content, filepath):
+  with open(filepath, 'w') as fw:
+    fw.write(content)
+#fp_write
+
+
+def explore(path):
+  for root, dirs, files in os.walk(path):
+    for f in files:
+      yield os.path.join(root, f)
+#explore
 
 class ToObject:
 
   def __init__(self, **kwargs):
     for key, value in kwargs.items():
       self.__setattr__(key, value)
-    #endfor
 
   def __repr__(self):
     return repr(self.__dict__)
+#ToObject

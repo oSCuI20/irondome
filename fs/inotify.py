@@ -17,7 +17,7 @@ strerror = CFUNCTYPE(c_char_p, c_int)(
 )
 
 inotify_init = CFUNCTYPE(c_int, use_errno=True)(
-  ('inotify_init', libc),
+  ('inotify_init1', libc),
 )
 
 inotify_add_watch = CFUNCTYPE(c_int, c_int, c_char_p, c_uint32, use_errno=True)(
@@ -67,7 +67,7 @@ IN_ALL_EVENTS = (IN_ACCESS | IN_MODIFY | IN_ATTRIB | IN_CLOSE_WRITE | \
                  IN_MOVED_TO | IN_DELETE | IN_CREATE | IN_DELETE_SELF | IN_MOVE_SELF)
 
 
-class IEvent(object):
+class FSEvent(object):
   __Access      = IN_ACCESS
   __Modify      = IN_MODIFY
   __Attrib      = IN_ATTRIB
@@ -81,7 +81,7 @@ class IEvent(object):
   __Close_NOWR  = IN_CLOSE_NOWRITE
   __All         = IN_ALL_EVENTS
 
-  __action_names = {
+  __events_name = {
       __Access     : 'access',
       __Modify     : 'modify',
       __Attrib     : 'attrib',
@@ -125,7 +125,7 @@ class IEvent(object):
 
     if isinstance(action_names, list) and len(action_names) > 0:
       flags = 0
-      for flag, map in self.__action_names.items():
+      for flag, map in self.__events_name.items():
         if map in action_names:
           flags |= flag
     #enmdif
@@ -134,8 +134,8 @@ class IEvent(object):
   #get_flags
 
   @property
-  def action_name(self):
-    return self.__action_names.get(self.action)
+  def events_name(self):
+    return self.__events_name.get(self.action)
 
   @property
   def path(self):
@@ -180,4 +180,4 @@ class IEvent(object):
   @property
   def All(self):
     return self.__All
-#class IEvents
+#class FSEvent

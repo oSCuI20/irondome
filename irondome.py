@@ -7,10 +7,10 @@
 # Detección de actividad anómala
 #
 """
-  {0} [OPTIONS] <path> <file-extension>
+  {program} [OPTIONS] <path1,path2,...> <file-extension>
 
   OPTIONS:
-    -event values separate for comas, default all. Valid values:
+    -events values separate for comas, default all. Valid values:
         'access'
         'modify'
         'attrib'
@@ -21,19 +21,19 @@
         'move to'
         'open'
         'closed'
-        'closed'
+    -logfile default, {logfile}
     -help
 """
 import sys, os
 
 from time import time, sleep, strftime, localtime
 
-from fs.inotify   import IEvent
-from fs.monitor   import FSWatcher
-from utils.utils  import *
+from utils import Logger
+from fs    import FSEvent, FSWatcher, FSWatcherError
 
 
 class args:
+  program  = sys.argv[0]
   logfile  = '/var/log/irondome/irondome.logs'
   basepath = os.path.dirname(os.path.abspath(sys.argv[0]))
 
@@ -52,18 +52,34 @@ class args:
     'move to',
     'open',
     'closed',
-    'closed',
   ]
 #class args
 
 
-def main():
-  parse_arguments()
+def main(logger):
+  parse_arguments(logger)
 
+  logger.debug(f'args {args.__dict__}')
+
+  #TODO Load FSIntegrity
   watchers = FSWatcher(args.extensions)
-  flags    = IEvent.get_flags(IEvent, args.events)
+  flags    = FSEvent.get_flags(FSEvent, args.events)
 
-  watchers.add_event(path=args.watchpath, flags=flags)
+  logger.debug(f'events {args.events} flags {bin(flags)}')
+  notfound = []
+
+  for path in args.watchpath:
+    logger.debug(f'watcher into {path}')
+    try:
+      watchers.add_event(path=path, flags=flags)
+    except FSWatcherError as err:
+      logger.warning(f'{err}, {path}')
+      logger.debug(f'{path} not found')
+      notfound.append(path)
+  #forend
+  
+  if len(notfound) == len(args.watchpath):
+    logger.halt(f'paths not found')
 
   while True:
     for event in watchers.read_events():
@@ -73,47 +89,53 @@ def main():
   #endwhile
 #main
 
-def parse_arguments():
-  options_ = [ '-event', '-help' ]
-  options  = ' '.join(sys.argv[1:]).strip().split(' ')
+def parse_arguments(logger):
+  options_ = [ '-event', '-logfile', '-help' ]
+  options  = sys.argv[1:]
 
   events = []
-  i = 0
-  while len(options)  > i:
-    data = options[i]
-    if data == '-events':
-      i += 1
-      events = options[i].split(',')
+  if len(options) <= 0:
+    logger.halt_with_doc('', __doc__.format(program=args.program,
+                                            logfile=args.logfile))
+
+  while len(options) > 0:
+    data = options.pop(0)
+    if data in ['-events', '-logfile']:
+      value = options.pop(0)
+      if data == '-events' :     events       = value.split(',')
+      if data == '-logfile':     args.logfile = value
+
     elif data == '-help':
-      halt_with_doc('', __doc__, sys.argv[0], 0)
+      logger.halt_with_doc('', __doc__.format(program=args.program,
+                                              logfile=args.logfile))
 
     else:
-      args.watchpath = os.path.abspath(options[i])
-      i += 1
-      if len(options) > i:
-        args.extensions = options[i:]
-        i += 1 + len(args.extensions)
+      if data:
+        args.watchpath = [os.path.abspath(x.rstrip()) for x in data.split(',')]
+
+      if len(options) > 0:
+        args.extensions = [ x for x in options ]
+        options.clear()
       #endif
-
-      continue
-
-    i += 1
   #endwhile
 
-  print(args.__dict__)
   if not args.watchpath:
-    halt('ERROR: set directory to monitoring')
+    logger.halt('ERROR: set directory to monitoring')
 
-  if not os.path.exists(args.watchpath):
-    halt('ERROR: path not found')
+  if len(args.watchpath) > 0:
+    for path in args.watchpath:
+      if not os.path.exists(path):
+        logger.warning(f'ERROR: {path} not found')
 
   for event in events:
     if event not in args.events:
-      halt(f'ERROR: {event} not recognized')
+      logger.halt(f'ERROR: {event} not recognized')
   #endfor
 
   if len(events) > 0:
     args.events = events
+
+  logger.setlogfile(args.logfile)
 #parse_arguments
 
 
@@ -124,4 +146,4 @@ if __name__ == "__main__":
   if os.getuid() != 0:
     halt('ERROR: You need root privileges', 1)
 
-  main()
+  main(Logger())
