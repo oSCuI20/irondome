@@ -10,7 +10,7 @@ from ctypes import CDLL, CFUNCTYPE, \
                    c_char_p, c_int, c_uint32
 from struct import unpack_from
 
-libc = CDLL('/usr/lib/x86_64-linux-gnu/libc.so.6')
+libc = CDLL('libc.so.6')
 
 strerror = CFUNCTYPE(c_char_p, c_int)(
   ('strerror', libc),
