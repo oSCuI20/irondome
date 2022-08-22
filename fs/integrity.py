@@ -31,7 +31,7 @@ class FSIntegrity(object):
   def __initilize__(self):
     self.logger.debug(f'initialize database, {self.database}')
 
-    sql = "SELECT name FROM sqlite_master GROUP BY 1 HAVING type='table' AND name='syscheck';"
+    self.conn.fetchone("SELECT name FROM sqlite_master GROUP BY 1 HAVING type='table' AND name='syscheck';")
 
     cur = self.conn.cursor()
     cur.execute(sql)
