@@ -46,10 +46,10 @@ class Logger:
     self.__logging(f'WARNING - {msg}')
   #warning
 
-  def critical(self, msg):
+  def error(self, msg):
     self.color = Colors.RED
-    self.__logging(f'CRITICAL - {msg}')
-  #critical
+    self.__logging(f'ERROR - {msg}')
+  #error
 
   def debug(self, msg):
     self.color = Colors.BOLD

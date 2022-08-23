@@ -29,7 +29,7 @@ import sys, os
 from time import time, sleep, strftime, localtime
 
 from utils import Logger
-from fs    import FSEvent, FSWatcher, FSWatcherError
+from fs    import FSEvent, FSWatcher, FSWatcherError, FSIntegrity
 
 
 class args:
@@ -62,6 +62,23 @@ def main(logger):
   logger.debug(f'args {args.__dict__}')
 
   #TODO Load FSIntegrity
+  logger.debug(f'running system integrity')
+  integrity = []
+
+  FSIntegrity(args.watchpath[0])
+  # for path in args.watchpath:
+  #   try:
+  #     logger.debug(f'FS Integrity {path}')
+  #     i = FSIntegrity(path)
+  #
+  #     integrity.append()
+  #
+  #   except:
+  #     logger.error(f'{err}, {path}')
+  #     logger.debug(f'{err}, {path}')
+  #endfor
+
+  #sys.exit(1)
   watchers = FSWatcher(args.extensions)
   flags    = FSEvent.get_flags(FSEvent, args.events)
 
@@ -73,11 +90,11 @@ def main(logger):
     try:
       watchers.add_event(path=path, flags=flags)
     except FSWatcherError as err:
-      logger.warning(f'{err}, {path}')
+      logger.error(f'{err}, {path}')
       logger.debug(f'{path} not found')
       notfound.append(path)
   #forend
-  
+
   if len(notfound) == len(args.watchpath):
     logger.halt(f'paths not found')
 

@@ -14,13 +14,14 @@ from utils import Logger
 
 class dbSQLite(object):
 
-  self.result = None
+  result = None
 
   def __init__(self, dbfile):
     self.dbfile  = dbfile
-    self.connect = sqlite3
-
     self.logger  = Logger()
+
+    self.connect = sqlite3
+  #__init__
 
   def to_dict(self, cur, row):
     out = {}
@@ -28,14 +29,22 @@ class dbSQLite(object):
       out[field[0]] = row[idx]
 
     return out
+  #to_dict
 
   def fetchone(self, sql):
+    self.cur.execute(sql)
+    self.result = self.cur.fetchone()
+  #fetchone
 
-    cur.execute(sql)
-    self.result = cur.fetchone()
-    cur.close()
+  def fetchall(self, sql):
+    self.cur.execute(sql)
+    self.result = self.cur.fetchall()
+  #fetchall
 
   def insert(self, sql):
+    self.cur.execute(sql)
+    self.connect.commit()
+  #insert
 
   @property
   def cur(self):
