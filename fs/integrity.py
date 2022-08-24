@@ -7,68 +7,150 @@
 import os, sys
 import hashlib
 
-from time import sleep
+from time import time, sleep
 
-from utils import checksum, fp_write, explore, Logger, dbSQLite
+from utils import *
 
 
 class FSIntegrity(object):
 
   basepath = os.path.dirname(os.path.abspath(sys.argv[0]))
+  buffer   = 65535
 
-  def __init__(self, path):
+  def __init__(self, initializedb=False, updatedb=True):
     self.database = f'{self.basepath}/.fs-integrity.sqlite3'
-    self.path     = path
+    self.logger   = Logger()
 
-    self.logger = Logger()
-    self.logger.debug(f'database file -> {self.database}')
+    self.__initialize__()
 
-    self.conn = dbSQLite(self.database)
+    if initializedb:
+      self.__initilize_database__()
 
-    self.run(self.path)
-    # self.__initilize_database__()
-    # self.__initialize__()
+    if not self.__check_if_table_exists__():
+      raise FSIntegrityError(-1, 'ERROR: Integrity database not initialize')
+
+    if not initializedb:
+      count = self.count()
+      if not count:
+        raise FSIntegrityError(-1, 'ERROR: Integrity database not initialize')
+    #endif
   #__init__
 
   def run(self, path):
-    i = 0
-    for file in explore(path):
-      f = open(file, 'rb')
-      hash = hashlib.sha256(f.read()).hexdigest()
-      f.close()
+    paths = [ x for x in explore(path) ]
+    while True:
+      if len(paths) == 0:
+        break #endwhile
 
-      self.logger.debug(f' {file}')
-    #endfoe
-    self.logger.debug(f'end {path}')
+      filepath = paths.pop()
+      if not os.path.isfile(filepath):
+        self.logger.debug(f'ignore file {filepath}')
+        continue
+
+      hash = self.get_hash(filepath)
+
+      self.__add__(filepath.encode(), hash)
+      self.logger.debug(f'{filepath} {hash}')
+    #endwhile
   #run
 
-  def __initialize__(self):
+  def get_hash(self, filepath):
+    if not os.path.isfile(filepath):
+      return
+
+    hash = hashlib.sha256()
+    with open(filepath, 'rb') as fr:
+      while True:
+        data = fr.read(self.buffer)
+        if not data:
+          break
+
+        hash.update(data)
+      #endwhile
+      fr.flush()
+
+    return hash.hexdigest()
+  #get_hash
+
+  def validate(self, fullpath):
+    self.get(fullpath)
+
+    return self.conn.result and self.conn.result['hash'] == self.get_hash(fullpath)
+  #validate
+
+  def remove(self, fullpath):
+    self.get(fullpath)
+  #remove
+
+  def get(self, fullpath):
+    sql = 'SELECT * FROM sys_integrity WHERE uid = ? LIMIT 1'
+
+    self.conn.fetchone((sql, (hashlib.sha256(fullpath).hexdigest(),)))
+
+    return self.conn.result
+  #get
+
+  def count(self):
     sql = "SELECT COUNT(*) as counter FROM sys_integrity"
     self.conn.fetchone(sql)
 
-    self.logger.debug(f'initialize, {self.conn.result} `{sql}`')
-    if self.conn.result['counter'] == 0:
-      self.run(self.path)
+    return self.conn.result if not self.conn.result else self.conn.result['counter']
+  #count
+
+  def __add__(self, fullpath, hash):
+    tm = int(time())
+    self.get(fullpath)
+
+    if self.conn.result and self.conn.result['id']:  # Update
+      if self.conn.result['hash'] == hash:
+        return
+
+      sql  = 'UPDATE sys_integrity SET hash = ?, date = ? WHERE id = ?'
+      vals = (hash, tm, self.conn.result['id'])
+
+    else:
+      sql  = 'INSERT INTO sys_integrity (`uid`, `path`, `hash`, `date`) ' + \
+             'VALUES (?, ?, ?, ?)'
+      vals = (hashlib.sha256(fullpath).hexdigest(), fullpath, hash, tm)
+
+    self.conn.insert((sql, vals))
+  #__add__
+
+  def __initialize__(self):
+    self.logger.debug(f'initialize, database file -> {self.database}')
+    self.conn = dbSQLite(self.database)
   #__initialize__
 
   def __initilize_database__(self):
+    self.logger.debug(f'initialize database, {self.database}')
+
+    if self.__check_if_table_exists__():
+      question = input('sys_integrity table exists, do you want to continue? [y/n]')
+      if question.lower() == 'y':
+        sql = "DROP TABLE sys_integrity"
+        self.conn.insert(sql)
+      else:
+        self.logger.halt('Cancel')
+    #endif
+
+    sql = """
+CREATE TABLE `sys_integrity` (
+`id`                INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+`uid`               VARCHAR(255) NOT NULL,
+`path`              BLOB,
+`hash`              VARCHAR(255) NOT NULL,
+`date`              DATETIME DEFAULT CURRENT_TIMESTAMP,
+`updated`           DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+  """
+    self.conn.insert(sql)
+  #__initilize__
+
+  def __check_if_table_exists__(self):
     sql = "SELECT name FROM sqlite_master GROUP BY 1 HAVING type='table' AND name='sys_integrity';"
     self.conn.fetchone(sql)
 
-    if not self.conn.result:    # create table sys_integrity
-      self.logger.debug(f'initialize database, {self.database}')
-      sql = """
-CREATE TABLE `sys_integrity` (
-  `id`                INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-  `path`              BLOB,
-  `hash`              VARCHAR(255) NOT NULL,
-  `date`              DATETIME DEFAULT CURRENT_TIMESTAMP,
-  `updated`           DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-    """
-      self.conn.insert(sql)
-    #endif
-  #__initilize__
+    return self.conn.result
 #class FSIntegrity
 
 

@@ -34,10 +34,18 @@ def fp_write(content, filepath):
 #fp_write
 
 
-def explore(path):
+def explore(path, directory=False):
+  if os.path.isfile(path):
+    yield path
+
   for root, dirs, files in os.walk(path):
+    for d in dirs:
+      if directory:
+        yield os.path.join(root, d)
+
     for f in files:
-      yield os.path.join(root, f)
+      if not directory:
+        yield os.path.join(root, f)
 #explore
 
 class ToObject:

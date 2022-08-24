@@ -11,7 +11,6 @@
 
   OPTIONS:
     -events values separate for comas, default all. Valid values:
-        'access'
         'modify'
         'attrib'
         'create'
@@ -19,17 +18,18 @@
         'delete self'
         'move from'
         'move to'
-        'open'
-        'closed'
+    -init-integrity
     -logfile default, {logfile}
     -help
 """
 import sys, os
 
-from time import time, sleep, strftime, localtime
+from threading import Thread
+from time      import time, sleep, strftime, localtime
 
-from utils import Logger
-from fs    import FSEvent, FSWatcher, FSWatcherError, FSIntegrity
+from utils import Logger, explore
+from fs    import FSEvent, FSWatcher, FSWatcherError, FSIntegrity, FSIntegrityError, \
+                  IOStats
 
 
 class args:
@@ -37,21 +37,20 @@ class args:
   logfile  = '/var/log/irondome/irondome.logs'
   basepath = os.path.dirname(os.path.abspath(sys.argv[0]))
 
+  init_integrity = False
+
   watchpath  = None
   extensions = []
   maxmemory  = 100 # MB
 
   events = [
-    'access',
     'modify',
     'attrib',
     'create',
     'delete',
     'delete self',
     'move from',
-    'move to',
-    'open',
-    'closed',
+    'move to'
   ]
 #class args
 
@@ -61,53 +60,72 @@ def main(logger):
 
   logger.debug(f'args {args.__dict__}')
 
-  #TODO Load FSIntegrity
-  logger.debug(f'running system integrity')
-  integrity = []
+  integrity = FSIntegrity(args.init_integrity)
+  watchers  = FSWatcher(args.extensions)
+  flags     = FSEvent.get_flags(FSEvent, args.events)
 
-  FSIntegrity(args.watchpath[0])
-  # for path in args.watchpath:
-  #   try:
-  #     logger.debug(f'FS Integrity {path}')
-  #     i = FSIntegrity(path)
-  #
-  #     integrity.append()
-  #
-  #   except:
-  #     logger.error(f'{err}, {path}')
-  #     logger.debug(f'{err}, {path}')
-  #endfor
-
-  #sys.exit(1)
-  watchers = FSWatcher(args.extensions)
-  flags    = FSEvent.get_flags(FSEvent, args.events)
+  logger.log((-1, f'running integrity file system'))
 
   logger.debug(f'events {args.events} flags {bin(flags)}')
   notfound = []
 
+  # init program
   for path in args.watchpath:
-    logger.debug(f'watcher into {path}')
     try:
-      watchers.add_event(path=path, flags=flags)
+      logger.log((-1, f'check integrity files in {path}'))
+      sleep(1)
+
+      integrity.run(path)
+
+      paths = [ path ] + [ x for x in explore(path, directory=True) ]
+
+      for p in paths:
+        logger.log((-1, f'running watcher, {p}'))
+        watchers.add_event(path=p, flags=flags)
+
+    except FSIntegrityError as err:
+      logger.log((-3, f'{err}, {path}'))
+      logger.debug(f'{err}, {path}')
+
     except FSWatcherError as err:
-      logger.error(f'{err}, {path}')
+      logger.log((-3, f'{err}, {path}'))
       logger.debug(f'{path} not found')
       notfound.append(path)
-  #forend
+  #endfor
+
+  logger.log((-1, f'end integrity'))
+
+  io = IOStats(interval=1)
 
   if len(notfound) == len(args.watchpath):
     logger.halt(f'paths not found')
 
-  while True:
-    for event in watchers.read_events():
-      print(f'{strftime("%Y-%m-%d %H:%M:%S ", localtime())} -- {event}')
+  thiostats = Thread(name='IOStats', target=io.loop)
+  thmonitor = Thread(name='FSWatcher', target=watchers.loop)
 
-    sleep(0.2)
+  while True:
+    try:
+      if not thiostats.is_alive():
+        logger.log((-1, 'starting iostats'))
+        thiostats.start()
+
+      if not thmonitor.is_alive():
+        logger.log((-1, 'stating monitor'))
+        thmonitor.start()
+
+      sleep(0.5)
+    except KeyboardInterrupt:
+      io.terminate       = True
+      watchers.terminate = True
+
+      thiostats.join()
+      thmonitor.join()
+      break
   #endwhile
 #main
 
 def parse_arguments(logger):
-  options_ = [ '-event', '-logfile', '-help' ]
+  options_ = [ '-event', '-logfile', '-init-integrity', '-help' ]
   options  = sys.argv[1:]
 
   events = []
@@ -122,6 +140,8 @@ def parse_arguments(logger):
       if data == '-events' :     events       = value.split(',')
       if data == '-logfile':     args.logfile = value
 
+    elif data == '-init-integrity':
+      args.init_integrity = True
     elif data == '-help':
       logger.halt_with_doc('', __doc__.format(program=args.program,
                                               logfile=args.logfile))
@@ -142,7 +162,7 @@ def parse_arguments(logger):
   if len(args.watchpath) > 0:
     for path in args.watchpath:
       if not os.path.exists(path):
-        logger.warning(f'ERROR: {path} not found')
+        logger.log((-2, f'ERROR: {path} not found'))
 
   for event in events:
     if event not in args.events:
@@ -161,6 +181,6 @@ if __name__ == "__main__":
   except: pass
 
   if os.getuid() != 0:
-    halt('ERROR: You need root privileges', 1)
+    print('ERROR: You need root privileges')
 
   main(Logger())

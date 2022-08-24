@@ -27,33 +27,41 @@ class Logger:
   def __logging(self, msg):
     msg = msg.rstrip()
     tm  = strftime("%Y-%m-%d %H:%M:%S ", localtime())
-    if   self.__verbose:
-      sys.stdout.write(f'{tm} --> {self.color}{msg}{self.endc}\n')
-    elif self.__debug:
-      sys.stdout.write(f'{tm} --> {self.color}{msg}{self.endc}\n')
+
+    sys.stdout.write(f'{tm} --> {self.color}{msg}{self.endc}\n')
 
     if self.__fd:
       self.__fd.write(f'{tm} --> {msg}\n')
   #__logging
 
-  def success(self, msg):
-    self.color = Colors.GREEN
-    self.__logging(f'SUCCESS - {msg}')
-  #success
+  def log(self, _msg):
+    def success(msg):
+      self.color = Colors.GREEN
+      if self.__verbose:
+        self.__logging(f'SUCCESS - {msg}')
+    #success
 
-  def warning(self, msg):
-    self.color = Colors.YELLOW
-    self.__logging(f'WARNING - {msg}')
-  #warning
+    def warning(msg):
+      self.color = Colors.YELLOW
+      if self.__verbose:
+        self.__logging(f'WARNING - {msg}')
+    #warning
 
-  def error(self, msg):
-    self.color = Colors.RED
-    self.__logging(f'ERROR - {msg}')
-  #error
+    def error(msg):
+      self.color = Colors.RED
+      if self.__verbose:
+        self.__logging(f'ERROR - {msg}')
+    #error
+
+    log = { -1: success, -2: warning, -3: error }
+
+    log[_msg[0]](_msg[1])
+  #log
 
   def debug(self, msg):
     self.color = Colors.BOLD
-    self.__logging(f'DEBUG {msg}')
+    if self.__debug:
+      self.__logging(f'DEBUG {msg}')
   #debug
 
   def halt(self, msg, code=0):

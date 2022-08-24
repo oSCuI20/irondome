@@ -31,18 +31,31 @@ class dbSQLite(object):
     return out
   #to_dict
 
+  def parse(self, sql):
+    if isinstance(sql, tuple):
+      return sql
+
+    return sql, ()
+  #parse
+
   def fetchone(self, sql):
-    self.cur.execute(sql)
+    sql, params = self.parse(sql)
+
+    self.cur.execute(sql, (params))
     self.result = self.cur.fetchone()
   #fetchone
 
   def fetchall(self, sql):
-    self.cur.execute(sql)
+    sql, params = self.parse(sql)
+
+    self.cur.execute(sql, (params))
     self.result = self.cur.fetchall()
   #fetchall
 
   def insert(self, sql):
-    self.cur.execute(sql)
+    sql, params = self.parse(sql)
+
+    self.cur.execute(sql, (params))
     self.connect.commit()
   #insert
 
@@ -63,7 +76,7 @@ class dbSQLite(object):
     if not self.dbfile:
       raise dbSQLiteException("ERROR: No database file defined")
 
-    self._connect = v.connect(self.dbfile)
+    self._connect = v.connect(self.dbfile, check_same_thread=False)
     self._connect.row_factory = self.to_dict
 
     self.cur = self.connect.cursor()
