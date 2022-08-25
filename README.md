@@ -12,7 +12,7 @@ Create a program that meets the following sepecifications:
 * if more arguments, these will be to the extension of file to monitor (pending/testing)
 * detected abuses in disk reading
 * detect intensive use of crypto activity (pending)
-* detect changes in the entropy of the files  (pending)
+* detect changes in the entropy of the files
 * never exceed 100MB of memory in use
 * alert should be reported in the /var/log/irondome/irondome.log  (pending)
 
