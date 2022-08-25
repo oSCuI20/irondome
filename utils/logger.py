@@ -13,44 +13,45 @@ from time import strftime, localtime
 
 class Logger:
 
-  __fd = None
+  fd = None
+  logfile = None
 
-  def __init__(self, logfile=None):
+  def __init__(self):
     self.__verbose = bool(os.environ.get('VERBOSE', False))
     self.__debug   = bool(os.environ.get('DEBUG', False))
 
     self.color = None
     self.endc  = Colors.ENDC
-
-    self.setlogfile(logfile)
+    self.setlogfile()
 
   def __logging(self, msg):
     msg = msg.rstrip()
     tm  = strftime("%Y-%m-%d %H:%M:%S ", localtime())
 
-    sys.stdout.write(f'{tm} --> {self.color}{msg}{self.endc}\n')
+    if self.__debug and not self.__verbose or self.__verbose:
+      sys.stdout.write(f'{tm} --> {self.color}{msg}{self.endc}\n')
 
-    if self.__fd:
-      self.__fd.write(f'{tm} --> {msg}\n')
+    if self.fd:
+      self.fd.write(f'{tm} --> {msg}\n')
+      self.fd.flush()
+      self.fd.seek(0)
+
   #__logging
 
   def log(self, _msg):
     def success(msg):
       self.color = Colors.GREEN
-      if self.__verbose:
-        self.__logging(f'SUCCESS - {msg}')
+      self.__logging(f'SUCCESS - {msg}')
     #success
 
     def warning(msg):
       self.color = Colors.YELLOW
-      if self.__verbose:
-        self.__logging(f'WARNING - {msg}')
+      self.__logging(f'WARNING - {msg}')
     #warning
 
     def error(msg):
       self.color = Colors.RED
-      if self.__verbose:
-        self.__logging(f'ERROR - {msg}')
+      self.__logging(f'ERROR - {msg}')
     #error
 
     log = { -1: success, -2: warning, -3: error }
@@ -74,13 +75,15 @@ class Logger:
     self.halt(f'{msg}\n{"-" * 80}{doc}', code)
   #halt_with_doc
 
-  def setlogfile(self, logfile):
-    if logfile:
-      logdirectory = os.path.dirname(logfile)
+  def setlogfile(self):
+    if self.logfile:
+      logdirectory = os.path.dirname(self.logfile)
       if not os.path.exists(logdirectory):
         os.makedirs(logdirectory)
 
-      self.__fd = open(logfile, 'a')
+      self.fd = open(self.logfile, 'a+')
+    #endif
+  #setlogfile
 
   @property
   def verbose(self):

@@ -55,9 +55,12 @@ class args:
 #class args
 
 
-def main(logger):
-  parse_arguments(logger)
+def main():
+  parse_arguments()
 
+  Logger.logfile = args.logfile
+  
+  logger = Logger()
   logger.debug(f'args {args.__dict__}')
 
   integrity = FSIntegrity(args.init_integrity)
@@ -128,10 +131,11 @@ def main(logger):
   #endwhile
 #main
 
-def parse_arguments(logger):
+def parse_arguments():
   options_ = [ '-event', '-logfile', '-init-integrity', '-help' ]
   options  = sys.argv[1:]
 
+  logger = Logger()
   events = []
   if len(options) <= 0:
     logger.halt_with_doc('', __doc__.format(program=args.program,
@@ -175,8 +179,6 @@ def parse_arguments(logger):
 
   if len(events) > 0:
     args.events = events
-
-  logger.setlogfile(args.logfile)
 #parse_arguments
 
 
@@ -187,4 +189,4 @@ if __name__ == "__main__":
   if os.getuid() != 0:
     print('ERROR: You need root privileges')
 
-  main(Logger())
+  main()
