@@ -61,6 +61,10 @@ def main(logger):
   logger.debug(f'args {args.__dict__}')
 
   integrity = FSIntegrity(args.init_integrity)
+  if args.init_integrity:
+    [ integrity.run(path) for path in args.watchpath ]
+    logger.halt('finish')
+
   watchers  = FSWatcher(args.extensions)
   flags     = FSEvent.get_flags(FSEvent, args.events)
 
