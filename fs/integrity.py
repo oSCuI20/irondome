@@ -47,14 +47,14 @@ class FSIntegrity(object):
         self.logger.debug(f'ignore file {filepath}')
         continue
 
-      hash = self.get_hash(filepath)
+      hash = self.hash(filepath)
 
       self.__add__(filepath.encode(), hash)
       self.logger.debug(f'{filepath} {hash}')
     #endwhile
   #run
 
-  def get_hash(self, filepath):
+  def hash(self, filepath):
     if not os.path.isfile(filepath):
       return
 
@@ -70,12 +70,12 @@ class FSIntegrity(object):
       fr.flush()
 
     return hash.hexdigest()
-  #get_hash
+  #hash
 
   def validate(self, fullpath):
     self.get(fullpath)
 
-    return self.conn.result and self.conn.result['hash'] == self.get_hash(fullpath)
+    return self.conn.result and self.conn.result['hash'] == self.hash(fullpath)
   #validate
 
   def remove(self, fullpath):

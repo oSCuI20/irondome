@@ -16,7 +16,7 @@ from termios   import FIONREAD
 from io        import FileIO
 
 from fs    import *
-from utils import ToObject, Logger
+from utils import ToObject, Logger, shannon_entropy
 
 
 class FSWatcher(FileIO):
@@ -76,6 +76,7 @@ class FSWatcher(FileIO):
 
   def __handler(self, entry, mask, event, wd):
     self.result = None
+
     if mask & IN_ISDIR:  # remove or add new watchers
       exists = self._watcher_exists(entry)
 
@@ -89,19 +90,24 @@ class FSWatcher(FileIO):
 
     flag = mask & event.flags
     if flag:
+      entropy = shannon_entropy(entry.encode())
       fsevent = FSEvent(event, flag, entry)
-      self.result = (-1, f'{fsevent.events_name} to `{entry}`')
+      self.result = (-1, f'{fsevent.events_name} to `{entry}`, entropy {entropy}')
 
-    if mask & IN_MODIFY or mask & IN_MOVED_TO or mask & IN_MOVED_FROM:
-      if not self.__integrity.validate(entry.encode()):
-        info = self.__integrity.get(entry.encode())
-        hash = self.__integrity.get_hash(entry.encode())
+      if mask & IN_MODIFY or mask & IN_MOVED_TO or mask & IN_MOVED_FROM:
+        if not self.__integrity.validate(entry.encode()):
+          info = self.__integrity.get(entry.encode())
+          hash = self.__integrity.hash(entry.encode())
 
-        self.result = (-2, f'{fsevent.events_name} `{entry}`')
+          self.result = (-2, f'{fsevent.events_name} `{entry}`, entropy {entropy}')
 
-        if info and info['hash'] != hash:
-          self.result = (-3, f'{fsevent.events_name} `{entry}` has been modified')
-    #endif
+          if info and info['hash'] != hash:
+            self.result = (-3, f'{fsevent.events_name} `{entry}` has been modified, entropy {entropy}')
+        #endif
+      #endif
+
+      if mask & IN_DELETE:
+        self.result = ((-3 , f'{fsevent.events_name} to `{entry}`, entropy {entropy}'))
   #__handler
 
   def read_events(self, timeout=1):
