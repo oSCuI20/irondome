@@ -127,7 +127,12 @@ class FSWatcher(FileIO):
              mask & IN_EXCL_UNLINK:
           continue #exclude sym links
 
-        #TODO extensions filter
+        if mask & IN_ISDIR != IN_ISDIR and len(self.__extensions) > 0:
+          ext = name.decode().split('.')[-1]
+          if ext in self.__extensions:
+            continue
+        #endif
+
         entry  = f'{os.path.join(event.path, name).decode().rstrip("/")}'
         self.logger.debug(f'read_events: wd {wd}, cookie {cookie}, entry {entry}, mask {hex(mask)}')
 

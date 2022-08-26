@@ -77,7 +77,7 @@ def shannon_entropy(f):
     #endwhile
   #endif
 
-  return -entropy
+  return round(-entropy, 2)
 #shannon_entropy
 
 
