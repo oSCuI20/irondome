@@ -41,7 +41,7 @@ class Logger:
   def log(self, _msg):
     def success(msg):
       self.color = Colors.GREEN
-      self.__logging(f'SUCCESS - {msg}')
+      self.__logging(f'Ok - {msg}')
     #success
 
     def warning(msg):
@@ -51,7 +51,7 @@ class Logger:
 
     def error(msg):
       self.color = Colors.RED
-      self.__logging(f'ERROR - {msg}')
+      self.__logging(f'CRITICAL - {msg}')
     #error
 
     log = { -1: success, -2: warning, -3: error }
