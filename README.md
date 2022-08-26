@@ -9,7 +9,7 @@ Create a program that meets the following sepecifications:
 * run in background
 * work if it is executed by root
 * monitor a critical zone. The path must be indicated as an argument
-* if more arguments, these will be to the extension of file to monitor (pending/testing)
+* if more arguments, these will be to the extension of file to monitor 
 * detected abuses in disk reading
 * detect intensive use of crypto activity
 * detect changes in the entropy of the files
