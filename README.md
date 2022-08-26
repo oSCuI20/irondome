@@ -14,7 +14,7 @@ Create a program that meets the following sepecifications:
 * detect intensive use of crypto activity
 * detect changes in the entropy of the files
 * never exceed 100MB of memory in use
-* alert should be reported in the /var/log/irondome/irondome.log  (pending)
+* alert should be reported in the /var/log/irondome/irondome.log
 
 ### Extras
 
