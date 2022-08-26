@@ -71,18 +71,18 @@ class IOStats(object):
   }
 
   def __init__(self, interval=0,
-                     abuse_warning=150*1024,
+                     abuse_warning=1*1024*1024,
                      abuse_critical=10*1024*1024):
+    self.interval = interval
+
     self.cpus  = {}
+
     self.disks = {}
-
-    self.interval    = interval
     self.sector_size = 512
-
     self.read_disks_abuse = {}
     self.read_disks_abuse_max_counter = 10
-    self.read_disks_abuse_warning  = abuse_warning
-    self.read_disks_abuse_critical = abuse_critical
+    self.read_disks_abuse_warning  = abuse_warning  # default 1MB
+    self.read_disks_abuse_critical = abuse_critical # default 10MB
 
     self.terminate = False
     self.logger = Logger()
@@ -182,20 +182,24 @@ class IOStats(object):
         cpu_usage.append(f'{usage}')
       #endfor
 
-      self.logger.log((log_level, f'usage {cpu_usage}'))
+      if log_level != -1:
+        self.logger.log((log_level, f'usage {cpu_usage}'))
 
       self.diskstats()
+      log_level = -1
       for disk in self.disks.keys():
         self.read_disks_abuse[disk].append(self.disks[disk]['rb/s'])
 
         if len(self.read_disks_abuse[disk]) >= self.read_disks_abuse_max_counter:
           abuse = sum(self.read_disks_abuse[disk]) / self.read_disks_abuse_max_counter
 
-          if abuse > self.read_disks_abuse_warning:
-            self.logger.log((-3, f'reading abuse in {disk}, {abuse / 1024} kB/s'))
+          if abuse > self.read_disks_abuse_warning and abuse <= self.read_disks_abuse_critical:
+            log_level = -2
+          elif abuse > self.read_disks_abuse_critical:
+            log_level = -3
 
-          elif abuse > self.read_disks_abuse_warning:
-            self.logger.log((-2, f'reading abuse in {disk}, {abuse / 1024} kB/s'))
+          if log_level != -1:
+            self.logger.log((log_level, f'reading abuse in {disk}, {abuse / 1024} kB/s'))
 
           self.read_disks_abuse[disk].pop(0)
         #endif
