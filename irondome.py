@@ -59,7 +59,7 @@ def main():
   parse_arguments()
 
   Logger.logfile = args.logfile
-  
+
   logger = Logger()
   logger.debug(f'args {args.__dict__}')
 
@@ -188,5 +188,6 @@ if __name__ == "__main__":
 
   if os.getuid() != 0:
     print('ERROR: You need root privileges')
+    sys.exit(1)
 
   main()
