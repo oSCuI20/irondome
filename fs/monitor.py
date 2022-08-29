@@ -129,7 +129,7 @@ class FSWatcher(FileIO):
 
         if mask & IN_ISDIR != IN_ISDIR and len(self.__extensions) > 0:
           ext = name.decode().split('.')[-1]
-          if ext in self.__extensions:
+          if ext not in self.__extensions:
             continue
         #endif
 
